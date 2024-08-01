@@ -1,0 +1,44 @@
+--shell
+wget -O baseball_salaries_2003.txt https://raw.githubusercontent.com/hipic/dataset/master/baseball_salaries_2003.txt
+
+hdfs dfs -mkdir baseball_salaries
+hdfs dfs -put baseball_salaries_2003.txt baseball_salaries
+hdfs dfs -ls baseball_salaries
+
+beeline
+
+--beeline
+use bd0356;
+CREATE EXTERNAL TABLE IF NOT EXISTS baseball_salaries (Team string, Player string, Salary double, Position string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ':'
+STORED AS TEXTFILE LOCATION '/user/bd0356/baseball_salaries/'
+TBLPROPERTIES ('skip.header.line.count'='3');
+
+SELECT * from baseball_salaries LIMIT 10;
+
+SELECT position, avg(salary) as average_sal FROM baseball_salaries 
+GROUP BY position;
+
+CREATE TABLE IF NOT EXISTS baseball_salaries_updated AS 
+SELECT Team, Player, Salary, LTRIM(Position) AS Position
+FROM baseball_salaries;
+
+Select * from baseball_salaries_updated where Position = 
+'Catcher' LIMIT 5; 
+
+CREATE TABLE IF NOT EXISTS baseball_salaries_updated2 AS
+SELECT Team, regexp_replace(Player, '[^a-zA-Z]+', '')
+AS Player, Salary, position FROM baseball_salaries;
+
+SELECT * from baseball_salaries_updated2 LIMIT 5;
+
+CREATE TABLE IF NOT EXISTS team_budget
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE LOCATION "/user/bd0356/tmp/budget"
+AS SELECT
+team,
+SUM(salary) as total
+FROM baseball_salaries_updated2 GROUP BY team;
+
+SELECT team, total from team_budget SORT BY total DESC;
+
