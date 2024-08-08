@@ -1,0 +1,104 @@
+use beeline
+--beeline
+use bd0356;
+CREATE EXTERNAL TABLE megamarket (user_id INT, 
+datetime BIGINT,
+event INT, 
+item_id INT, 
+category_id INT, 
+price FLOAT)
+STORED AS PARQUET
+LOCATION "/user/bd0356/final_project/megamarket";
+
+CREATE VIEW IF NOT EXISTS megamarket_readable AS
+SELECT
+user_id,
+from_unixtime(datetime DIV 1000) as event_time,
+event,
+item_id,
+category_id,
+price
+FROM megamarket;
+
+SELECT * from megamarket LIMIT 10;
+SELECT * from megamarket_readable LIMIT 10;
+DROP TABLE megamarket;
+DROP VIEW megamarket_readable;
+
+SELECT category_id, count(event) as clicks FROM megamarket_readable
+WHERE event = 0
+GROUP BY category_id
+SORT BY clicks DESC
+LIMIT 10;
+
+CREATE VIEW IF NOT EXISTS most_clicked_category AS SELECT
+category_id,
+COUNT(event) as clicks
+FROM megamarket_readable
+WHERE event = 0
+GROUP BY category_id;
+
+SELECT * from most_clicked_category
+SORT BY clicks DESC
+LIMIT 10;
+
+--shell
+hdfs dfs -mkdir final_project/most_clicked_category
+hdfs dfs -ls final_project
+
+--beeline
+INSERT OVERWRITE DIRECTORY '/user/bd0356/final_project/most_clicked_category'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT * FROM most_clicked_category;
+
+--shell
+hdfs dfs -ls final_project/most_clicked_category
+hdfs dfs -get /user/bd0356/final_project/most_clicked_category/00000*_0
+ls -al
+cat 000000_0 000001_0 > most_clicked_category.csv
+
+--local
+scp bd0356@35.92.188.157:/home/bd0356/most_clicked_category.csv most_clicked.csv
+
+--beeline
+CREATE VIEW IF NOT EXISTS purchases_over_time AS SELECT 
+event_time,  
+COUNT(event) AS purchases
+FROM megamarket_readable
+WHERE event = 2
+GROUP BY event_time;
+
+CREATE VIEW IF NOT EXISTS purchases_over_time_dates AS SELECT 
+SUBSTR(event_time, 1, 10) AS event_day,
+purchases
+FROM purchases_over_time
+GROUP BY SUBSTR(event_time, 1, 10), purchases;
+
+CREATE VIEW IF NOT EXISTS purchases_per_day AS SELECT 
+TO_DATE(event_day) AS event_date,
+SUM(purchases) AS purchases_per_day
+FROM purchases_over_time_dates
+GROUP BY TO_DATE(event_day);
+
+SELECT * FROM purchases_over_time_dates LIMIT 10;
+
+DROP VIEW purchases_per_day;
+
+SELECT * from purchases_per_day;
+--shell
+hdfs dfs -mkdir final_project/purchases_over_time
+hdfs dfs -ls final_project
+
+--beeline
+INSERT OVERWRITE DIRECTORY '/user/bd0356/final_project/purchases_per_day'
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+SELECT * FROM purchases_per_day;
+
+--shell
+hdfs dfs -ls final_project/purchases_per_day
+hdfs dfs -get /user/bd0356/final_project/purchases_per_day/00000*_0
+ls -al
+cat 000000_0 000001_0 > purchases_time.csv
+
+--local
+scp bd0356@35.92.188.157:/home/bd0356/purchases_time.csv purchases_over_time.csv
